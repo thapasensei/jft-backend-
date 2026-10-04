@@ -79,7 +79,7 @@ app.post('/api/submit-exam', async (req, res) => {
 app.post('/api/admin/login', (req, res) => {
   const { username, password } = req.body;
   const adminUser = process.env.ADMIN_USERNAME || "thapasensei";
-  const adminPass = process.env.ADMIN_PASSWORD || "sensei1997";
+  const adminPass = process.env.ADMIN_PASSWORD || "master1997";
 
   if (username === adminUser && password === adminPass) {
     return res.json({ success: true, message: 'Authenticated' });
