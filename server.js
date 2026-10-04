@@ -1,148 +1,69 @@
 const express = require('express');
 const cors = require('cors');
-const admin = require('firebase-admin');
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Firebase Admin Initialization
-const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount),
-  databaseURL: process.env.FIREBASE_DATABASE_URL
-});
-
-const db = admin.database();
-
-// 1. Student Login API
-app.post('/api/login', async (req, res) => {
-  const { name, code, deviceId } = req.body;
-  if (!name || !code) return res.status(400).json({ success: false, message: 'Missing fields' });
-
-  try {
-    const studentRef = db.ref(`basic_level_students/${code}`);
-    const snapshot = await studentRef.once('value');
-    if (!snapshot.exists()) return res.json({ success: false, message: 'Invalid Access Code!' });
-
-    const student = snapshot.val();
-    if (student.name.toLowerCase() !== name.toLowerCase()) {
-      return res.json({ success: false, message: 'Name does not match!' });
-    }
-
-    if (student.expiryTimestamp && Date.now() > student.expiryTimestamp) {
-      return res.json({ success: false, message: 'Access Code Expired!' });
-    }
-
-    if (!student.boundDeviceId) {
-      await studentRef.update({ boundDeviceId: deviceId });
-    } else if (student.boundDeviceId !== deviceId) {
-      return res.json({ success: false, message: 'Security Warning: Code bound to another device!' });
-    }
-
-    return res.json({ success: true, studentName: student.name, studentCode: code });
-  } catch (err) {
-    return res.status(500).json({ success: false, message: 'Server error' });
-  }
-});
-
-// 2. Exam Submit API
-app.post('/api/submit-exam', async (req, res) => {
-  const { code, name, score } = req.body;
-  if (!code) return res.status(400).json({ success: false, message: 'Missing code' });
-
-  try {
-    const todayStr = new Date().toISOString().split('T')[0];
-    const reportRef = db.ref(`basic_level_reports_set1/${code}`);
-    const snap = await reportRef.once('value');
-    let repData = snap.val() || {};
-    let dailyScores = repData.dailyScores || [];
-
-    if (repData.lastExamDate !== todayStr) dailyScores = [];
-    dailyScores.push(score);
-
-    await reportRef.update({
-      name: name,
-      lastScore: score,
-      lastDate: new Date().toLocaleString(),
-      lastExamDate: todayStr,
-      dailyScores: dailyScores
-    });
-
-    return res.json({ success: true });
-  } catch (err) {
-    return res.status(500).json({ success: false, message: 'Submit failed' });
-  }
-});
-
-// 3. 👨‍🏫 TEACHER LOGIN WITH USERNAME & PASSWORD
+// 1. TEACHER LOGIN ENDPOINT
 app.post('/api/admin/login', (req, res) => {
-  const { username, password } = req.body;
-  const adminUser = process.env.ADMIN_USERNAME || "thapasensei";
-  const adminPass = process.env.ADMIN_PASSWORD || "master1997";
+    const { username, password } = req.body;
 
-  if (username === adminUser && password === adminPass) {
-    return res.json({ success: true, message: 'Authenticated' });
-  }
-  return res.status(401).json({ success: false, message: 'Invalid Username or Password!' });
+    const envUser = process.env.ADMIN_USERNAME || 'thapasensei';
+    const envPass = process.env.ADMIN_PASSWORD;
+
+    // यदि पासवर्ड Vercel को ADMIN_PASSWORD सँग मिल्यो भने success
+    if (password === envPass) {
+        return res.json({ success: true, message: 'Teacher Login Successful' });
+    } else {
+        return res.status(401).json({ success: false, message: 'Invalid Admin Password' });
+    }
 });
 
-// Fetch Data for Teacher
-app.post('/api/admin/data', async (req, res) => {
-  const { username, password } = req.body;
-  const adminUser = process.env.ADMIN_USERNAME || "thapasensei";
-  const adminPass = process.env.ADMIN_PASSWORD || "sensei1997";
+// 2. FETCH DASHBOARD DATA
+app.post('/api/admin/data', (req, res) => {
+    const { password } = req.body;
+    const envPass = process.env.ADMIN_PASSWORD;
 
-  if (username !== adminUser || password !== adminPass) return res.status(401).json({ success: false });
+    if (password === envPass) {
+        return res.json({
+            success: true,
+            students: {},
+            reports: {}
+        });
+    } else {
+        return res.status(401).json({ success: false, message: 'Unauthorized' });
+    }
+});
 
-  try {
-    const studentsSnap = await db.ref('basic_level_students').once('value');
-    const reportsSnap = await db.ref('basic_level_reports_set1').once('value');
+// 3. STUDENT EXAM LOGIN
+app.post('/api/login', (req, res) => {
+    const { name, code, deviceId } = req.body;
+    if (!name || !code) {
+        return res.status(400).json({ success: false, message: 'Name and Code are required' });
+    }
     return res.json({
-      success: true,
-      students: studentsSnap.val() || {},
-      reports: reportsSnap.val() || {}
+        success: true,
+        studentName: name,
+        studentCode: code
     });
-  } catch (err) {
-    return res.status(500).json({ success: false });
-  }
 });
 
-// Add New Student
-app.post('/api/admin/add-student', async (req, res) => {
-  const { username, password, name, expiryTimestamp } = req.body;
-  const adminUser = process.env.ADMIN_USERNAME || "thapasensei";
-  const adminPass = process.env.ADMIN_PASSWORD || "sensei1997";
-
-  if (username !== adminUser || password !== adminPass) return res.status(401).json({ success: false });
-
-  const code = 'BASIC-' + Math.floor(1000 + Math.random() * 9000);
-  await db.ref(`basic_level_students/${code}`).set({
-    name: name,
-    code: code,
-    boundDeviceId: null,
-    expiryTimestamp: expiryTimestamp,
-    createdDate: new Date().toLocaleDateString()
-  });
-
-  return res.json({ success: true, code, name });
+// 4. MANUAL STUDENT LOGIN
+app.post('/api/manual-login', (req, res) => {
+    const { name, email } = req.body;
+    if (!name || !email) {
+        return res.status(400).json({ success: false, message: 'Name and Email required' });
+    }
+    return res.json({ success: true, message: 'Login Success' });
 });
 
-// Reset / Delete Student
-app.post('/api/admin/manage-student', async (req, res) => {
-  const { username, password, code, action } = req.body;
-  const adminUser = process.env.ADMIN_USERNAME || "thapasensei";
-  const adminPass = process.env.ADMIN_PASSWORD || "sensei1997";
-
-  if (username !== adminUser || password !== adminPass) return res.status(401).json({ success: false });
-
-  if (action === 'reset') {
-    await db.ref(`basic_level_students/${code}/boundDeviceId`).remove();
-  } else if (action === 'delete') {
-    await db.ref(`basic_level_students/${code}`).remove();
-    await db.ref(`basic_level_reports_set1/${code}`).remove();
-  }
-  return res.json({ success: true });
+// HEALTH CHECK
+app.get('/', (req, res) => {
+    res.send('JFT Backend Server is running smoothly!');
 });
 
-module.exports = app;
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+});
