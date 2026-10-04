@@ -75,23 +75,25 @@ app.post('/api/submit-exam', async (req, res) => {
   }
 });
 
-// 3. 👨‍🏫 TEACHER / ADMIN APIS (NEW & SECURE)
-
-// Admin Login
+// 3. 👨‍🏫 TEACHER LOGIN WITH USERNAME & PASSWORD
 app.post('/api/admin/login', (req, res) => {
-  const { password } = req.body;
+  const { username, password } = req.body;
+  const adminUser = process.env.ADMIN_USERNAME || "thapasensei";
   const adminPass = process.env.ADMIN_PASSWORD || "sensei1997";
-  if (password === adminPass) {
+
+  if (username === adminUser && password === adminPass) {
     return res.json({ success: true, message: 'Authenticated' });
   }
-  return res.status(401).json({ success: false, message: 'Incorrect Password!' });
+  return res.status(401).json({ success: false, message: 'Invalid Username or Password!' });
 });
 
-// Fetch Students & Reports
+// Fetch Data for Teacher
 app.post('/api/admin/data', async (req, res) => {
-  const { password } = req.body;
+  const { username, password } = req.body;
+  const adminUser = process.env.ADMIN_USERNAME || "thapasensei";
   const adminPass = process.env.ADMIN_PASSWORD || "sensei1997";
-  if (password !== adminPass) return res.status(401).json({ success: false });
+
+  if (username !== adminUser || password !== adminPass) return res.status(401).json({ success: false });
 
   try {
     const studentsSnap = await db.ref('basic_level_students').once('value');
@@ -108,9 +110,11 @@ app.post('/api/admin/data', async (req, res) => {
 
 // Add New Student
 app.post('/api/admin/add-student', async (req, res) => {
-  const { password, name, expiryTimestamp } = req.body;
+  const { username, password, name, expiryTimestamp } = req.body;
+  const adminUser = process.env.ADMIN_USERNAME || "thapasensei";
   const adminPass = process.env.ADMIN_PASSWORD || "sensei1997";
-  if (password !== adminPass) return res.status(401).json({ success: false });
+
+  if (username !== adminUser || password !== adminPass) return res.status(401).json({ success: false });
 
   const code = 'BASIC-' + Math.floor(1000 + Math.random() * 9000);
   await db.ref(`basic_level_students/${code}`).set({
@@ -124,11 +128,13 @@ app.post('/api/admin/add-student', async (req, res) => {
   return res.json({ success: true, code, name });
 });
 
-// Reset Device Lock / Delete Student
+// Reset / Delete Student
 app.post('/api/admin/manage-student', async (req, res) => {
-  const { password, code, action } = req.body;
+  const { username, password, code, action } = req.body;
+  const adminUser = process.env.ADMIN_USERNAME || "thapasensei";
   const adminPass = process.env.ADMIN_PASSWORD || "sensei1997";
-  if (password !== adminPass) return res.status(401).json({ success: false });
+
+  if (username !== adminUser || password !== adminPass) return res.status(401).json({ success: false });
 
   if (action === 'reset') {
     await db.ref(`basic_level_students/${code}/boundDeviceId`).remove();
